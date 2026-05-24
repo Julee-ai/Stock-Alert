@@ -78,27 +78,20 @@ def main():
     today_str = datetime.now().strftime("%Y-%m-%d")
     start_str = (datetime.now() - timedelta(weeks=260)).strftime("%Y-%m-%d")
 
-    # 컬럼명 확인 후 처리
-    kospi = fdr.StockListing("KOSPI")
-    kosdaq = fdr.StockListing("KOSDAQ")
-    print("KOSPI 컬럼:", kospi.columns.tolist())  # 컬럼 확인용
-
+    # KOSPI + KOSDAQ 종목 리스트 가져오기
+    kospi = fdr.StockListing("KOSPI")[["Code", "Name", "Amount", "High"]]
+    kosdaq = fdr.StockListing("KOSDAQ")[["Code", "Name", "Amount", "High"]]
     all_stocks = pd.concat([kospi, kosdaq]).reset_index(drop=True)
 
-    # 컬럼명 자동 탐지
-    code_col = next(c for c in all_stocks.columns if c in ["Code", "Symbol", "ticker", "종목코드"])
-    name_col = next(c for c in all_stocks.columns if c in ["Name", "종목명", "name"])
-    close_col = next(c for c in all_stocks.columns if c in ["Close", "종가", "Adj Close"])
-    volume_col = next(c for c in all_stocks.columns if c in ["Volume", "거래량"])
-
-    all_stocks["거래대금"] = pd.to_numeric(all_stocks[close_col], errors="coerce") * pd.to_numeric(all_stocks[volume_col], errors="coerce")
-    all_stocks = all_stocks.dropna(subset=["거래대금"])
-    all_stocks = all_stocks.sort_values("거래대금", ascending=False).head(50)
+    # Amount = 거래대금, 상위 50개
+    all_stocks["Amount"] = pd.to_numeric(all_stocks["Amount"], errors="coerce")
+    all_stocks = all_stocks.dropna(subset=["Amount"])
+    all_stocks = all_stocks.sort_values("Amount", ascending=False).head(50)
 
     hit_tickers = []
     for _, row in all_stocks.iterrows():
-        ticker = row[code_col]
-        name = row[name_col]
+        ticker = row["Code"]
+        name = row["Name"]
         try:
             hist = fdr.DataReader(ticker, start_str, today_str)
             if hist.empty or len(hist) < 2:
@@ -106,7 +99,7 @@ def main():
             five_year_high = hist["High"].max()
             today_high = hist["High"].iloc[-1]
             if today_high >= five_year_high:
-                hit_tickers.append((ticker, name, row["거래대금"]))
+                hit_tickers.append((ticker, name, row["Amount"]))
         except:
             continue
 
