@@ -117,8 +117,4 @@ def main():
             send_photo(image_path, caption)
 
 if __name__ == "__main__":
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    response = requests.post(url, data={"chat_id": CHAT_ID, "text": "테스트"})
-    print("응답 코드:", response.status_code)
-    print("응답 내용:", response.text)
-    # main()
+    main()
