@@ -78,20 +78,27 @@ def main():
     today_str = datetime.now().strftime("%Y-%m-%d")
     start_str = (datetime.now() - timedelta(weeks=260)).strftime("%Y-%m-%d")
 
-    # KOSPI + KOSDAQ 종목 리스트 한번에 가져오기
-    kospi = fdr.StockListing("KOSPI")[["Code", "Name", "MarketCap", "Volume", "Close"]]
-    kosdaq = fdr.StockListing("KOSDAQ")[["Code", "Name", "MarketCap", "Volume", "Close"]]
+    # 컬럼명 확인 후 처리
+    kospi = fdr.StockListing("KOSPI")
+    kosdaq = fdr.StockListing("KOSDAQ")
+    print("KOSPI 컬럼:", kospi.columns.tolist())  # 컬럼 확인용
+
     all_stocks = pd.concat([kospi, kosdaq]).reset_index(drop=True)
 
-    # 거래대금 = 종가 x 거래량
-    all_stocks["거래대금"] = all_stocks["Close"] * all_stocks["Volume"]
+    # 컬럼명 자동 탐지
+    code_col = next(c for c in all_stocks.columns if c in ["Code", "Symbol", "ticker", "종목코드"])
+    name_col = next(c for c in all_stocks.columns if c in ["Name", "종목명", "name"])
+    close_col = next(c for c in all_stocks.columns if c in ["Close", "종가", "Adj Close"])
+    volume_col = next(c for c in all_stocks.columns if c in ["Volume", "거래량"])
+
+    all_stocks["거래대금"] = pd.to_numeric(all_stocks[close_col], errors="coerce") * pd.to_numeric(all_stocks[volume_col], errors="coerce")
     all_stocks = all_stocks.dropna(subset=["거래대금"])
     all_stocks = all_stocks.sort_values("거래대금", ascending=False).head(50)
 
     hit_tickers = []
     for _, row in all_stocks.iterrows():
-        ticker = row["Code"]
-        name = row["Name"]
+        ticker = row[code_col]
+        name = row[name_col]
         try:
             hist = fdr.DataReader(ticker, start_str, today_str)
             if hist.empty or len(hist) < 2:
