@@ -4,7 +4,6 @@ import matplotlib
 matplotlib.use("Agg")
 import mplfinance as mpf
 import FinanceDataReader as fdr
-from pykrx import stock
 from datetime import datetime, timedelta
 import pandas as pd
 
@@ -76,28 +75,31 @@ def save_chart(ticker, name, today):
 
 def main():
     today = datetime.now().strftime("%Y%m%d")
-
-    # pykrx로 거래대금 상위 50개 한번에 가져오기
-    kospi = stock.get_market_trading_value_by_ticker(today, "KOSPI")
-    kosdaq = stock.get_market_trading_value_by_ticker(today, "KOSDAQ")
-    combined = pd.concat([kospi, kosdaq])
-    combined = combined.sort_values("거래대금", ascending=False).head(50)
-
     today_str = datetime.now().strftime("%Y-%m-%d")
     start_str = (datetime.now() - timedelta(weeks=260)).strftime("%Y-%m-%d")
 
+    # KOSPI + KOSDAQ 종목 리스트 한번에 가져오기
+    kospi = fdr.StockListing("KOSPI")[["Code", "Name", "MarketCap", "Volume", "Close"]]
+    kosdaq = fdr.StockListing("KOSDAQ")[["Code", "Name", "MarketCap", "Volume", "Close"]]
+    all_stocks = pd.concat([kospi, kosdaq]).reset_index(drop=True)
+
+    # 거래대금 = 종가 x 거래량
+    all_stocks["거래대금"] = all_stocks["Close"] * all_stocks["Volume"]
+    all_stocks = all_stocks.dropna(subset=["거래대금"])
+    all_stocks = all_stocks.sort_values("거래대금", ascending=False).head(50)
+
     hit_tickers = []
-    for ticker in combined.index:
+    for _, row in all_stocks.iterrows():
+        ticker = row["Code"]
+        name = row["Name"]
         try:
-            name = stock.get_market_ticker_name(ticker)
             hist = fdr.DataReader(ticker, start_str, today_str)
-            if hist.empty:
+            if hist.empty or len(hist) < 2:
                 continue
             five_year_high = hist["High"].max()
             today_high = hist["High"].iloc[-1]
             if today_high >= five_year_high:
-                vol = combined.loc[ticker, "거래대금"]
-                hit_tickers.append((ticker, name, vol))
+                hit_tickers.append((ticker, name, row["거래대금"]))
         except:
             continue
 
