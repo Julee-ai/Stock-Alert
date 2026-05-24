@@ -117,4 +117,5 @@ def main():
             send_photo(image_path, caption)
 
 if __name__ == "__main__":
-    main()
+    send_message("✅ 텔레그램 봇 연결 테스트 성공!")
+    # main()
