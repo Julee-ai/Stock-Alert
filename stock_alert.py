@@ -2,9 +2,9 @@ import os
 import requests
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import mplfinance as mpf
 from pykrx import stock
+import FinanceDataReader as fdr
 from datetime import datetime, timedelta
 import pandas as pd
 
@@ -22,28 +22,26 @@ def send_message(msg):
 
 def save_chart(ticker, name, today):
     end = datetime.strptime(today, "%Y%m%d")
-    start = (end - timedelta(weeks=260)).strftime("%Y%m%d")  # 5년
+    start = (end - timedelta(weeks=260)).strftime("%Y-%m-%d")
 
-    df = stock.get_market_ohlcv(start, today, ticker)
+    df = fdr.DataReader(ticker, start)
     if df.empty or len(df) < 20:
         return None
 
     df.index = pd.to_datetime(df.index)
-    df = df.rename(columns={"시가": "Open", "고가": "High", "저가": "Low", "종가": "Close", "거래량": "Volume"})
+    df = df[["Open", "High", "Low", "Close", "Volume"]]
+    df = df.dropna()
 
-    # 5년 신고가 라인
     all_time_high = df["High"].max()
-
-    # 이동평균선
     ma20 = df["Close"].rolling(20).mean()
     ma60 = df["Close"].rolling(60).mean()
     ma120 = df["Close"].rolling(120).mean()
 
     apds = [
-        mpf.make_addplot(ma20, color="#f6a623", width=0.8, label="MA20"),
-        mpf.make_addplot(ma60, color="#4a90e2", width=0.8, label="MA60"),
-        mpf.make_addplot(ma120, color="#7ed321", width=0.8, label="MA120"),
-        mpf.make_addplot(pd.Series(all_time_high, index=df.index), color="red", width=1.2, linestyle="--", label="5년 신고가"),
+        mpf.make_addplot(ma20, color="#f6a623", width=0.8),
+        mpf.make_addplot(ma60, color="#4a90e2", width=0.8),
+        mpf.make_addplot(ma120, color="#7ed321", width=0.8),
+        mpf.make_addplot(pd.Series(all_time_high, index=df.index), color="red", width=1.2, linestyle="--"),
     ]
 
     style = mpf.make_mpf_style(
@@ -69,37 +67,50 @@ def save_chart(ticker, name, today):
         tight_layout=True,
     )
 
-    # 범례 추가
     axes[0].legend(["MA20", "MA60", "MA120", "5년 신고가"], loc="upper left",
                    facecolor="#1a1a2e", edgecolor="white", labelcolor="white", fontsize=9)
 
     fig.savefig(image_path, dpi=130, bbox_inches="tight", facecolor="#1a1a2e")
+    import matplotlib.pyplot as plt
     plt.close(fig)
     return image_path
 
 def main():
     today = datetime.now().strftime("%Y%m%d")
 
-    kospi = stock.get_market_trading_value_by_ticker(today, today, "KOSPI")
-    kosdaq = stock.get_market_trading_value_by_ticker(today, today, "KOSDAQ")
-    combined = kospi._append(kosdaq).sort_values("거래대금", ascending=False).head(50)
+    # 거래대금 상위 50 (KOSPI + KOSDAQ)
+    kospi_tickers = fdr.StockListing("KOSPI")[["Code", "Name"]]
+    kosdaq_tickers = fdr.StockListing("KOSDAQ")[["Code", "Name"]]
+    all_tickers = pd.concat([kospi_tickers, kosdaq_tickers]).reset_index(drop=True)
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    volumes = []
+    for _, row in all_tickers.iterrows():
+        ticker = row["Code"]
+        try:
+            df = fdr.DataReader(ticker, today_str, today_str)
+            if df.empty:
+                continue
+            volume_value = df["Close"].iloc[-1] * df["Volume"].iloc[-1]
+            volumes.append((ticker, row["Name"], volume_value, df["High"].iloc[-1]))
+        except:
+            continue
+
+    volumes.sort(key=lambda x: x[2], reverse=True)
+    top50 = volumes[:50]
 
     hit_tickers = []
-    for ticker in combined.index:
-        ohlcv = stock.get_market_ohlcv(today, today, ticker)
-        if ohlcv.empty:
+    for ticker, name, vol, today_high in top50:
+        start = (datetime.now() - timedelta(weeks=260)).strftime("%Y-%m-%d")
+        try:
+            hist = fdr.DataReader(ticker, start, today_str)
+            if hist.empty:
+                continue
+            five_year_high = hist["High"].max()
+            if today_high >= five_year_high:
+                hit_tickers.append((ticker, name, vol))
+        except:
             continue
-        today_high = ohlcv["고가"].iloc[-1]
-
-        end = datetime.strptime(today, "%Y%m%d")
-        start = (end - timedelta(weeks=260)).strftime("%Y%m%d")
-        hist = stock.get_market_ohlcv(start, today, ticker)
-        if hist.empty:
-            continue
-
-        five_year_high = hist["고가"].max()
-        if today_high >= five_year_high:
-            hit_tickers.append(ticker)
 
     if not hit_tickers:
         send_message(f"📭 [{today}] 해당 조건 종목 없음")
@@ -107,12 +118,11 @@ def main():
 
     send_message(f"📈 <b>[{today}] 거래대금 상위 50 + 5년 신고가</b>\n총 {len(hit_tickers)}개 종목")
 
-    for ticker in hit_tickers:
-        name = stock.get_market_ticker_name(ticker)
-        volume = combined.loc[ticker, "거래대금"] / 1e8
+    for ticker, name, vol in hit_tickers:
+        volume_억 = vol / 1e8
         image_path = save_chart(ticker, name, today)
         if image_path:
-            caption = f"<b>{name} ({ticker})</b>\n거래대금: {volume:.0f}억원"
+            caption = f"<b>{name} ({ticker})</b>\n거래대금: {volume_억:.0f}억원"
             send_photo(image_path, caption)
 
 if __name__ == "__main__":
