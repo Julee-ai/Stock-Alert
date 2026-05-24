@@ -13,7 +13,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install finance-datareader pykrx requests matplotlib mplfinance
+      - run: pip install finance-datareader requests matplotlib mplfinance
       - run: python stock_alert.py
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
