@@ -3,8 +3,8 @@ import requests
 import matplotlib
 matplotlib.use("Agg")
 import mplfinance as mpf
-from pykrx import stock
 import FinanceDataReader as fdr
+from pykrx import stock
 from datetime import datetime, timedelta
 import pandas as pd
 
@@ -29,8 +29,7 @@ def save_chart(ticker, name, today):
         return None
 
     df.index = pd.to_datetime(df.index)
-    df = df[["Open", "High", "Low", "Close", "Volume"]]
-    df = df.dropna()
+    df = df[["Open", "High", "Low", "Close", "Volume"]].dropna()
 
     all_time_high = df["High"].max()
     ma20 = df["Close"].rolling(20).mean()
@@ -70,43 +69,34 @@ def save_chart(ticker, name, today):
     axes[0].legend(["MA20", "MA60", "MA120", "5년 신고가"], loc="upper left",
                    facecolor="#1a1a2e", edgecolor="white", labelcolor="white", fontsize=9)
 
-    fig.savefig(image_path, dpi=130, bbox_inches="tight", facecolor="#1a1a2e")
     import matplotlib.pyplot as plt
+    fig.savefig(image_path, dpi=130, bbox_inches="tight", facecolor="#1a1a2e")
     plt.close(fig)
     return image_path
 
 def main():
     today = datetime.now().strftime("%Y%m%d")
 
-    kospi_tickers = fdr.StockListing("KOSPI")[["Code", "Name"]]
-    kosdaq_tickers = fdr.StockListing("KOSDAQ")[["Code", "Name"]]
-    all_tickers = pd.concat([kospi_tickers, kosdaq_tickers]).reset_index(drop=True)
+    # pykrx로 거래대금 상위 50개 한번에 가져오기
+    kospi = stock.get_market_trading_value_by_ticker(today, "KOSPI")
+    kosdaq = stock.get_market_trading_value_by_ticker(today, "KOSDAQ")
+    combined = pd.concat([kospi, kosdaq])
+    combined = combined.sort_values("거래대금", ascending=False).head(50)
 
     today_str = datetime.now().strftime("%Y-%m-%d")
-    volumes = []
-    for _, row in all_tickers.iterrows():
-        ticker = row["Code"]
-        try:
-            df = fdr.DataReader(ticker, today_str, today_str)
-            if df.empty:
-                continue
-            volume_value = df["Close"].iloc[-1] * df["Volume"].iloc[-1]
-            volumes.append((ticker, row["Name"], volume_value, df["High"].iloc[-1]))
-        except:
-            continue
-
-    volumes.sort(key=lambda x: x[2], reverse=True)
-    top50 = volumes[:50]
+    start_str = (datetime.now() - timedelta(weeks=260)).strftime("%Y-%m-%d")
 
     hit_tickers = []
-    for ticker, name, vol, today_high in top50:
-        start = (datetime.now() - timedelta(weeks=260)).strftime("%Y-%m-%d")
+    for ticker in combined.index:
         try:
-            hist = fdr.DataReader(ticker, start, today_str)
+            name = stock.get_market_ticker_name(ticker)
+            hist = fdr.DataReader(ticker, start_str, today_str)
             if hist.empty:
                 continue
             five_year_high = hist["High"].max()
+            today_high = hist["High"].iloc[-1]
             if today_high >= five_year_high:
+                vol = combined.loc[ticker, "거래대금"]
                 hit_tickers.append((ticker, name, vol))
         except:
             continue
