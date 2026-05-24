@@ -78,7 +78,6 @@ def save_chart(ticker, name, today):
 def main():
     today = datetime.now().strftime("%Y%m%d")
 
-    # 거래대금 상위 50 (KOSPI + KOSDAQ)
     kospi_tickers = fdr.StockListing("KOSPI")[["Code", "Name"]]
     kosdaq_tickers = fdr.StockListing("KOSDAQ")[["Code", "Name"]]
     all_tickers = pd.concat([kospi_tickers, kosdaq_tickers]).reset_index(drop=True)
