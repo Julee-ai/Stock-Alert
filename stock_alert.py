@@ -116,4 +116,4 @@ def main():
             send_photo(image_path, caption)
 
 if __name__ == "__main__":
-    main()stock_alert.py
+    main()
